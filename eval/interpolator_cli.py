@@ -121,14 +121,14 @@ _OUTPUT_VIDEO = flags.DEFINE_boolean(
     'subdirectory')
 
 # Add other extensions, if not either.
-_INPUT_EXT = ['png', 'jpg', 'jpeg']
+_INPUT_EXT = ['png', 'jpg', 'jpeg', 'exr']
 
 
 def _output_frames(frames: List[np.ndarray], frames_dir: str):
-  """Writes PNG-images to a directory.
+  """Writes EXR-images to a directory.
 
   If frames_dir doesn't exist, it is created. If frames_dir contains existing
-  PNG-files, they are removed before saving the new ones.
+  EXR-files, they are removed before saving the new ones.
 
   Args:
     frames: List of images to save.
@@ -136,7 +136,7 @@ def _output_frames(frames: List[np.ndarray], frames_dir: str):
 
   """
   if tf.io.gfile.isdir(frames_dir):
-    old_frames = tf.io.gfile.glob(f'{frames_dir}/frame_*.png')
+    old_frames = tf.io.gfile.glob(f'{frames_dir}/frame_*.exr')
     if old_frames:
       logging.info('Removing existing frames from %s.', frames_dir)
       for old_frame in old_frames:
@@ -145,7 +145,7 @@ def _output_frames(frames: List[np.ndarray], frames_dir: str):
     tf.io.gfile.makedirs(frames_dir)
   for idx, frame in tqdm(
       enumerate(frames), total=len(frames), ncols=100, colour='green'):
-    util.write_image(f'{frames_dir}/frame_{idx:03d}.png', frame)
+    util.write_image(f'{frames_dir}/frame_{idx:08d}.exr', frame)
   logging.info('Output frames saved in %s.', frames_dir)
 
 
