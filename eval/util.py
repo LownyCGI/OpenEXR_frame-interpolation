@@ -22,41 +22,56 @@ import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 
+import OpenEXR
+import Imath
+
 _UINT8_MAX_F = float(np.iinfo(np.uint8).max)
 _CONFIG_FFMPEG_NAME_OR_PATH = 'ffmpeg'
 
 
 def read_image(filename: str) -> np.ndarray:
-  """Reads an sRgb 8-bit image.
+    """Reads an 32-bit EXR image and returns the RGB channels.
+    Args:
+        filename: The input filename to read.
+    Returns:
+        A float32 3-channel (RGB) ndarray with colors in the [0..1] range.
+    """
+    # Read EXR file
+    exr_file = OpenEXR.InputFile(filename)
+    header = exr_file.header()
+    size = (header['dataWindow'].max.x + 1, header['dataWindow'].max.y + 1)
 
-  Args:
-    filename: The input filename to read.
+    # Read only RGB channels
+    r_channel = np.frombuffer(exr_file.channel('R'), dtype=np.float32)
+    g_channel = np.frombuffer(exr_file.channel('G'), dtype=np.float32)
+    b_channel = np.frombuffer(exr_file.channel('B'), dtype=np.float32)
 
-  Returns:
-    A float32 3-channel (RGB) ndarray with colors in the [0..1] range.
-  """
-  image_data = tf.io.read_file(filename)
-  image = tf.io.decode_image(image_data, channels=3)
-  image_numpy = tf.cast(image, dtype=tf.float32).numpy()
-  return image_numpy / _UINT8_MAX_F
+    # Combine channels and reshape to image size
+    image = np.stack([r_channel, g_channel, b_channel], axis=-1).reshape(size[1], size[0], -1)
+
+    
+    return image
 
 
 def write_image(filename: str, image: np.ndarray) -> None:
-  """Writes a float32 3-channel RGB ndarray image, with colors in range [0..1].
+    """Writes a float16 3-channel RGB ndarray image, with colors in range [0..1].
 
-  Args:
-    filename: The output filename to save.
-    image: A float32 3-channel (RGB) ndarray with colors in the [0..1] range.
-  """
-  image_in_uint8_range = np.clip(image * _UINT8_MAX_F, 0.0, _UINT8_MAX_F)
-  image_in_uint8 = (image_in_uint8_range + 0.5).astype(np.uint8)
+    Args:
+        filename: The output filename to save.
+        image: A float16 3-channel (RGB) ndarray with colors in the [0..1] range.
+    """
+    # Convert to half-precision (float16)
+    image = image.astype(np.float16)
 
-  extension = os.path.splitext(filename)[1]
-  if extension == '.jpg':
-    image_data = tf.io.encode_jpeg(image_in_uint8)
-  else:
-    image_data = tf.io.encode_png(image_in_uint8)
-  tf.io.write_file(filename, image_data)
+    # Create EXR file and write RGB channels
+    header = OpenEXR.Header(image.shape[1], image.shape[0])
+    header['channels'] = {'R': Imath.Channel(Imath.PixelType(Imath.PixelType.HALF)), 
+                          'G': Imath.Channel(Imath.PixelType(Imath.PixelType.HALF)), 
+                          'B': Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))}
+    output = OpenEXR.OutputFile(filename, header)
+    output.writePixels({'R': image[..., 0].tobytes(), 
+                        'G': image[..., 1].tobytes(), 
+                        'B': image[..., 2].tobytes()})
 
 
 def _recursive_generator(
